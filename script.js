@@ -35,8 +35,9 @@ function destinationMatches(prompt){
 }
 document.getElementById('tripForm').addEventListener('submit',event=>{
  event.preventDefault();
- const budget=Number(document.getElementById('budget').value),days=Number(document.getElementById('days').value),travelers=Number(document.getElementById('travelers').value),style=document.getElementById('style').value,prompt=document.getElementById('prompt').value,origin=document.getElementById('origin').value.trim(),raw=document.getElementById('airports').value.trim().toUpperCase(),airports=[...new Set(raw.split(/[,;\s]+/).filter(Boolean))],output=document.getElementById('results');
- if(!origin||!airports.length||!Number.isFinite(budget)||budget<100||days<1||days>30||travelers<1||travelers>10){output.textContent='Please enter a starting city, airports, valid budget, trip length and travelers.';return;}
+ const inputBudget=Number(document.getElementById('budget').value),budgetType=document.getElementById('budgetType').value,days=Number(document.getElementById('days').value),travelers=Number(document.getElementById('travelers').value),style=document.getElementById('style').value,prompt=document.getElementById('prompt').value,origin=document.getElementById('origin').value.trim(),raw=document.getElementById('airports').value.trim().toUpperCase(),airports=[...new Set(raw.split(/[,;\s]+/).filter(Boolean))],output=document.getElementById('results');
+ if(!origin||!airports.length||!Number.isFinite(inputBudget)||inputBudget<100||days<1||days>30||travelers<1||travelers>10){output.textContent='Please enter a starting city, airports, valid budget, trip length and travelers.';return;}
+ const budget=budgetType==='person'?inputBudget*travelers:inputBudget;
  const albany=/^albany(?:,?\s*(?:ny|new york))?$/i.test(origin);
  // For other origins, compare illustrative flights only. Never reuse Albany ground prices.
 
@@ -44,12 +45,44 @@ document.getElementById('tripForm').addEventListener('submit',event=>{
  const tags=inferredTags(prompt);if(['beach','nature','culture'].includes(style))tags.push(style);
  const requested=destinationMatches(prompt);
  const candidates=requested.length?destinations.filter(d=>requested.includes(d.name)):destinations;
- const results=candidates.map(d=>{
-  const comparisons=airports.map(airport=>{const ground=albany?cheapestGround(airport,days):{mode:'Not estimated',total:0},flight=Math.round(d.flight*demoFareFactors[airport])*travelers;return {airport,ground,flight,subtotal:ground.total+flight};}).sort((a,b)=>a.subtotal-b.subtotal);
-  const best=comparisons[0],stay=d.stay*(days-1)*Math.ceil(travelers/2),food=d.food*days*travelers,local=d.local*travelers,activities=d.activities*travelers,total=best.subtotal+stay+food+local+activities,match=tags.filter(t=>d.tags.includes(t)).length;
-  return {...d,best,comparisons,stay,food,local,activities,total,match,within:total<=budget};
- });
- results.sort((a,b)=>Number(b.within)-Number(a.within)||(style==='cheapest'?a.total-b.total:(b.match-a.match)*180+a.total-b.total));
- output.innerHTML=`<h2>Your trip comparisons</h2><p class="sub">Starting in ${escapeHtml(origin)} · Airports: ${escapeHtml(airports.join(', '))} · ${travelers} traveler(s) · ${days} days · ${money(budget)} budget</p><div class="none">DEMO ASSUMPTIONS ONLY — all flight, bus, train, driving, parking and rideshare costs below are fictional examples, not researched prices. ${albany?'Albany ground transport assumptions are illustrative and shared by the party.':'Ground transport is NOT estimated for this origin, so displayed totals are incomplete.'} No routes, dates, or schedules were checked.</div><div class="cards">${results.slice(0,3).map((d,i)=>`<article class="card ${i===0&&d.within?'best':''}"><div class="flag">${i===0&&d.within?'✦ TOP DEMO MATCH':'SAMPLE DESTINATION'}</div><h3>${escapeHtml(d.name)}</h3><div class="desc">${escapeHtml(d.desc)}</div><div class="price">${money(d.total)}</div><div class="status ${d.within?'within':'over'}">${d.within?money(budget-d.total)+' under budget':money(d.total-budget)+' over budget'}</div><div class="costs"><div>Selected airport<strong>${d.best.airport}</strong></div><div>Suggested airport transfer<strong>${escapeHtml(d.best.ground.mode)}</strong></div><div>Round-trip flights (sample)<strong>${money(d.best.flight)}</strong></div><div>Round-trip airport transfer + parking (sample)<strong>${money(d.best.ground.total)}</strong></div><div>Lodging<strong>${money(d.stay)}</strong></div><div>Food<strong>${money(d.food)}</strong></div><div>Local transport<strong>${money(d.local)}</strong></div><div>Activities<strong>${money(d.activities)}</strong></div></div><h4>Airport comparisons (fictional)</h4><div class="costs">${d.comparisons.map(c=>`<div>${c.airport} · ${escapeHtml(c.ground.mode)}<strong>${money(c.subtotal)}</strong></div>`).join('')}</div><div class="note">${albany?'Includes fictional flights and modeled transfers.':'Flight-only comparison; airport transfers are excluded.'} No live fares or transport routes were verified.</div></article>`).join('')}</div><p class="note">${requested.length?'Destination filter active: only explicitly requested locations are shown. If fewer than three results exist, we show fewer rather than inventing alternatives.':'No specific destination detected; showing sample destinations.'} Keyword matching, not live AI. These sample rankings do not represent real-world deals or the true cheapest airport.</p>`;
+
+ const tiers=requested.length===1?[
+  {name:'Budget explorer',flightFactor:1,stayFactor:.72,foodFactor:.8,localFactor:.9,activityFactor:.65,desc:'Lower-cost lodging and activities'},
+  {name:'Balanced adventure',flightFactor:1,stayFactor:1,foodFactor:1,localFactor:1,activityFactor:1,desc:'A balance of comfort and activities'},
+  {name:'Comfort & experiences',flightFactor:1,stayFactor:1.55,foodFactor:1.35,localFactor:1.25,activityFactor:1.65,desc:'More comfort and activity spending'}
+ ]:[{name:'Sample itinerary',flightFactor:1,stayFactor:1,foodFactor:1,localFactor:1,activityFactor:1,desc:'Illustrative baseline'}];
+ const results=candidates.flatMap(d=>tiers.map(tier=>{
+  const comparisons=airports.map(airport=>{
+   const ground=albany?cheapestGround(airport,days):{mode:'Unavailable',total:null};
+   const flight=Math.round(d.flight*demoFareFactors[airport]*tier.flightFactor)*travelers;
+   return {airport,ground,flight,subtotal:flight+(ground.total??0)};
+  }).sort((a,b)=>a.subtotal-b.subtotal);
+  const best=comparisons[0];
+  const stay=Math.round(d.stay*tier.stayFactor*(days-1)*Math.ceil(travelers/2));
+  const food=Math.round(d.food*tier.foodFactor*days*travelers);
+  const local=Math.round(d.local*tier.localFactor*travelers);
+  const activities=Math.round(d.activities*tier.activityFactor*travelers);
+  const total=best.subtotal+stay+food+local+activities;
+  const match=tags.filter(t=>d.tags.includes(t)).length;
+  return {...d,tier,best,comparisons,stay,food,local,activities,total,match,within:total<=budget};
+ }));
+ results.sort((a,b)=>Number(b.within)-Number(a.within)||(requested.length===1?a.total-b.total:style==='cheapest'?a.total-b.total:(b.match-a.match)*180+a.total-b.total));
+ const airportNote=albany?'Includes fictional Albany-origin airport transfers.':'Airport transfers from this starting city are unavailable; totals are incomplete and should not be used for booking decisions.';
+ output.innerHTML=`<h2>${requested.length===1?'Three sample packages for '+escapeHtml(requested[0]):'Your trip comparisons'}</h2>
+ <p class="sub">Starting in ${escapeHtml(origin)} · Airports: ${escapeHtml(airports.join(', '))} · ${travelers} traveler(s) · ${days} days · ${money(budget)} ${budgetType==='person'?'combined group budget ('+money(inputBudget)+' per person)':'group budget'}</p>
+ <div class="none">ILLUSTRATIVE DEMO ONLY — no real flights, hotels, transport schedules, availability or prices have been checked. Package tiers are hypothetical spending assumptions, not bookable offers. ${escapeHtml(airportNote)}</div>
+ <div class="cards">${results.slice(0,3).map((d,i)=>`<article class="card ${i===0&&d.within&&albany?'best':''}">
+ <div class="flag">${escapeHtml(d.tier.name.toUpperCase())}</div><h3>${escapeHtml(d.name)}</h3><div class="desc">${escapeHtml(d.tier.desc)} · ${escapeHtml(d.desc)}</div>
+ <div class="price">${money(d.total)}${!albany?' + airport transfer':''}</div>
+ <div class="status ${d.within&&albany?'within':'over'}">${albany?(d.within?money(budget-d.total)+' under budget':money(d.total-budget)+' over budget'):'Incomplete estimate — budget fit unknown'}</div>
+ <div class="costs"><div>Selected airport (sample)<strong>${d.best.airport}</strong></div>
+ <div>Airport transport<strong>${escapeHtml(d.best.ground.mode)}</strong></div>
+ <div>Round-trip flights<strong>${money(d.best.flight)}</strong></div>
+ <div>Airport transport & parking<strong>${d.best.ground.total===null?'Not available':money(d.best.ground.total)}</strong></div>
+ <div>Lodging<strong>${money(d.stay)}</strong></div><div>Food<strong>${money(d.food)}</strong></div>
+ <div>Local transport<strong>${money(d.local)}</strong></div><div>Activities<strong>${money(d.activities)}</strong></div></div>
+ <h4>Airport comparisons (fictional)</h4><div class="costs">${d.comparisons.map(c=>`<div>${c.airport} · ${escapeHtml(c.ground.mode)}<strong>${money(c.subtotal)}${c.ground.total===null?' + transfer':''}</strong></div>`).join('')}</div>
+ <div class="note">No actual bookings, prices, travel dates, or routes verified.</div></article>`).join('')}</div>
+ <p class="note">${requested.length===1?'All three packages stay within the requested destination, using different hypothetical spending levels.':requested.length?'Only requested destinations are shown.':'Showing sample destinations because no recognized specific destination was provided.'} Keyword matching only; no AI model or live booking data connected.</p>`;
  output.scrollIntoView({behavior:'smooth',block:'start'});
 });
