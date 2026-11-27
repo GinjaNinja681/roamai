@@ -5,6 +5,7 @@ const destinations=[
 {name:'Medellín, Colombia',desc:'Mountain views, city culture, and hiking',flight:360,stay:33,food:23,local:45,activities:65,tags:['nature','culture'],warm:true},
 {name:'Reykjavík, Iceland',desc:'Waterfalls, dramatic landscapes, and hot springs',flight:330,stay:95,food:55,local:135,activities:180,tags:['nature'],warm:false},
 {name:'Panama City, Panama',desc:'Rainforests, coastline, and urban exploration',flight:390,stay:44,food:28,local:55,activities:90,tags:['nature','beach','culture'],warm:true},
+{name:'Honolulu, Hawaii',desc:'Pacific beaches, volcanic scenery, hiking, and island culture',flight:720,stay:125,food:55,local:110,activities:150,tags:['beach','nature','culture'],warm:true},
 {name:'Mexico City, Mexico',desc:'Art, architecture, museums, and food',flight:285,stay:42,food:25,local:35,activities:60,tags:['culture'],warm:true}
 ];
 const money=n=>'$'+Math.round(n).toLocaleString('en-US');
@@ -24,6 +25,7 @@ function destinationMatches(prompt){
  const p=prompt.toLowerCase();
  // Explicit place requests must never silently turn into a worldwide discovery search.
  const aliases=[
+  {name:'Honolulu, Hawaii',patterns:[/\bhawai(?:i|ian)\b/,/\bhonolulu\b/,/\boahu\b/,/\bwaikiki\b/]},
   {name:'Panama City, Panama',patterns:[/\bpanama city\b/,/\bpanama\b/]},
   {name:'Mexico City, Mexico',patterns:[/\bmexico city\b/]},
   {name:'Medellín, Colombia',patterns:[/\bmedell[ií]n\b/,/\bcolombia\b/]},
@@ -44,6 +46,12 @@ document.getElementById('tripForm').addEventListener('submit',event=>{
  const unknown=airports.filter(a=>!demoAirportOptions[a]);if(unknown.length){output.innerHTML=`<div class="none">No demo assumptions for ${escapeHtml(unknown.join(', '))}. Try ALB, BOS, JFK, EWR, or LGA. This does not mean other airports are unavailable in real life.</div>`;return;}
  const tags=inferredTags(prompt);if(['beach','nature','culture'].includes(style))tags.push(style);
  const requested=destinationMatches(prompt);
+ // If a request names a destination we do not support, never silently substitute unrelated places.
+ const destinationIntent=/(?:\b(?:to|in|visit|visiting|go to|travel to|trip to|fly to|vacation in|stay in|destination(?: is)?|only)\s+)([a-z][a-z\s,.'-]{2,45})/i.exec(prompt);
+ if(!requested.length&&destinationIntent){
+   output.innerHTML='<div class="none">RoamAI does not have sample pricing for the destination in your request yet. No substitute destinations have been shown. This demo only supports a small destination list and does not search live travel prices.</div>';
+   return;
+ }
  const candidates=requested.length?destinations.filter(d=>requested.includes(d.name)):destinations;
 
  const tiers=requested.length===1?[
