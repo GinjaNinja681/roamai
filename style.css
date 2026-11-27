@@ -3,3 +3,5 @@
 .fields .wide{grid-column:1/-1}.fields small{display:block;margin-top:6px;color:#a4b8ca;font-size:12px}
 
 button:disabled{opacity:.55;cursor:wait}.fields small button{padding:7px 10px;font-size:12px}.flight-list{display:grid;gap:12px}.flight{display:grid;grid-template-columns:1fr auto;gap:16px}.flight .price{margin:0}.flight details{grid-column:1/-1;color:#b1c4d1}.flight summary{cursor:pointer}.sortbar{display:flex;align-items:center;gap:12px;margin:16px 0}.sortbar select{max-width:220px}.flight p{margin:7px 0}.flight .desc{min-height:0}@media(max-width:480px){.flight{grid-template-columns:1fr}}
+
+.ground-info{grid-column:1/-1;border-top:1px solid #355064;padding-top:12px;color:#c8d8e2;font-size:13px}.ground-info p{margin:6px 0}.results a{color:#4ce1bc}
